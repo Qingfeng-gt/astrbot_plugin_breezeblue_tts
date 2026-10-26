@@ -1,0 +1,207 @@
+{
+  "api_key": {
+    "description": "Breeze Blue API Key",
+    "type": "string",
+    "default": "",
+    "secret": true,
+    "obvious_hint": true,
+    "hint": "在 Breeze Blue Developer Console 的 API keys 页面创建，形如 brz_...。留空时会读取环境变量 BREEZE_API_KEY。"
+  },
+  "api_base": {
+    "description": "API 地址",
+    "type": "string",
+    "default": "https://api.breeze.blue",
+    "hint": "一般无需修改。仅在使用代理或自建网关时调整，不要以 / 结尾。"
+  },
+  "voice_id": {
+    "description": "默认音色 Voice ID",
+    "type": "string",
+    "default": "voc_xeh3w54cqvnp",
+    "hint": "默认值是 Breeze Blue 快速开始中的示例音色。可以用 /tts_voice list 搜索音色，再用 /tts_voice use <voice_id> 为单个会话切换。"
+  },
+  "model_id": {
+    "description": "模型",
+    "type": "string",
+    "default": "",
+    "hint": "可选 breeze-tts-2 或 breeze-tts-2-multilingual；留空则由 Breeze Blue 根据 language_code 自动选择。"
+  },
+  "language_code": {
+    "description": "语言代码",
+    "type": "string",
+    "default": "zh",
+    "hint": "ISO 639-1 两字母代码，如 zh、en、ja。留空表示自动。显式填写时模型必须支持该语言。"
+  },
+  "output_format": {
+    "description": "音频格式",
+    "type": "string",
+    "default": "mp3",
+    "options": [
+      "mp3",
+      "wav",
+      "wav_48000",
+      "opus",
+      "aac",
+      "flac",
+      "pcm",
+      "mp3_44100_192"
+    ],
+    "hint": "AstrBot 会把音频转换为各平台可发送的语音格式。QQ 推荐 mp3 或 wav。"
+  },
+  "napcat_audio_mode": {
+    "description": "NapCat 语音发送格式",
+    "type": "string",
+    "default": "silk",
+    "options": [
+      "silk",
+      "wav",
+      "native"
+    ],
+    "labels": [
+      "SILK（推荐）",
+      "WAV（24kHz PCM）",
+      "原始格式（交给 NapCat 转换）"
+    ],
+    "subtitles": [
+      "插件直接生成腾讯 SILK，绕过 NapCat 的 WAV→SILK 二次转换",
+      "发送 Breeze 的 24kHz WAV，由 NapCat 转换",
+      "发送 Breeze 原始音频（通常为 MP3），由 NapCat 转换"
+    ],
+    "hint": "仅对 aiocqhttp/NapCat 生效。QQ 语音有杂音时保持 silk；如果 NapCat 版本较老或 SILK 发送失败，可尝试 wav 或 native。非 NapCat 平台始终使用 output_format。"
+  },
+  "instructions": {
+    "description": "表演指令",
+    "type": "text",
+    "default": "",
+    "hint": "可选，例如“用温柔、平静的语气说”。需与合成文本的语言一致；留空则不发送。"
+  },
+  "speed": {
+    "description": "语速",
+    "type": "float",
+    "default": 1.0,
+    "slider": {
+      "min": 0.5,
+      "max": 2.0,
+      "step": 0.05
+    },
+    "hint": "1.0 为正常语速，范围 0.5–2.0。"
+  },
+  "volume": {
+    "description": "音量",
+    "type": "float",
+    "default": 1.0,
+    "slider": {
+      "min": 0.01,
+      "max": 2.0,
+      "step": 0.01
+    },
+    "hint": "1.0 为原始音量，范围 0.01–2.0。"
+  },
+  "guidance_scale": {
+    "description": "表现力引导强度",
+    "type": "float",
+    "default": 1.0,
+    "slider": {
+      "min": 1.0,
+      "max": 10.0,
+      "step": 0.1
+    },
+    "hint": "范围 1–10。与 instructions 搭配可获得更明显的表演效果；1.0 表示默认。"
+  },
+  "use_speaker_boost": {
+    "description": "增强说话人相似度",
+    "type": "bool",
+    "default": false,
+    "hint": "当 instructions 非空且 guidance_scale > 1 时该选项会被 Breeze Blue 忽略。"
+  },
+  "timeout": {
+    "description": "请求超时（秒）",
+    "type": "int",
+    "default": 60,
+    "slider": {
+      "min": 5,
+      "max": 300,
+      "step": 5
+    },
+    "hint": "单次 HTTP 请求的总超时时间。"
+  },
+  "max_chars": {
+    "description": "单段最大字符数",
+    "type": "int",
+    "default": 1000,
+    "slider": {
+      "min": 50,
+      "max": 2000,
+      "step": 50
+    },
+    "hint": "Breeze Blue 默认每请求最多 1000 字符（获批账户可到 2000）。长文本会按标点分段后分别合成。"
+  },
+  "max_segments": {
+    "description": "最大分段数",
+    "type": "int",
+    "default": 3,
+    "slider": {
+      "min": 1,
+      "max": 10,
+      "step": 1
+    },
+    "hint": "超过该分段数的文本会被拒绝，避免生成过长的语音和产生过多费用。"
+  },
+  "max_concurrent": {
+    "description": "最大并发请求数",
+    "type": "int",
+    "default": 2,
+    "slider": {
+      "min": 1,
+      "max": 8,
+      "step": 1
+    },
+    "hint": "同时进行的 Breeze Blue 合成请求数量，受账户并发限制约束。"
+  },
+  "tts_send_text": {
+    "description": "/tts 同时发送原文",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后，/tts 会在语音前额外发送一条原文文本。"
+  },
+  "auto_tts": {
+    "description": "默认开启自动语音回复",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后，AI 的纯文本回复会自动合成为语音。每个会话可以用 /tts_auto on|off 覆盖。流式回复不会被转换。"
+  },
+  "auto_tts_only_llm": {
+    "description": "只转换 AI 回复",
+    "type": "bool",
+    "default": true,
+    "hint": "开启时只处理 LLM 生成的结果；关闭后所有纯文本结果（包括其他插件输出）都可能被转换。"
+  },
+  "auto_tts_keep_text": {
+    "description": "自动语音保留文字",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后，自动语音会同时保留原文字消息；关闭时只发送语音。"
+  },
+  "session_settings_admin_only": {
+    "description": "群聊仅管理员可改会话设置",
+    "type": "bool",
+    "default": true,
+    "hint": "控制群聊中谁可以使用 /tts_voice use|reset 和 /tts_auto。私聊始终允许。"
+  },
+  "command_admin_only": {
+    "description": "仅管理员可使用 /tts",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后 /tts 指令仅限 AstrBot 管理员使用，避免普通用户消耗 API 额度。"
+  },
+  "voice_list_limit": {
+    "description": "音色列表条数",
+    "type": "int",
+    "default": 10,
+    "slider": {
+      "min": 1,
+      "max": 20,
+      "step": 1
+    },
+    "hint": "/tts_voice list 最多显示多少条结果。"
+  }
+}
