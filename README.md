@@ -132,7 +132,7 @@ AstrBot 的 `aiocqhttp` 适配器会把 `Record` 转成 WAV，再交给 NapCat�
 }
 ```
 
-工具会合成并直接发送语音；调用成功后不需要再重复朗读同一段文字。`instructions` 是随每次文本一起传给 Breeze Blue 的，配置里的 `instructions` 只在工具没有提供时作为默认值。如果模型不调用工具，可以在人格/系统提示词中明确要求“需要语音时使用 `breeze_blue_tts` 工具”，并确认当前模型提供商/Agent 已启用工具调用。
+模型应根据上下文生成 `instructions`（描述这句话应有的情绪、语气和节奏），而不是照抄用户原话。工具会合成并直接发送语音；调用成功后不需要再重复朗读同一段文字。`instructions` 是随每次文本一起传给 Breeze Blue 的，配置里的 `instructions` 只在工具没有提供时作为默认值。如果模型不调用工具，可以在人格/系统提示词中明确要求“需要语音时使用 `breeze_blue_tts` 工具”，并确认当前模型提供商/Agent 已启用工具调用。
 
 ## WebUI 音色选择
 

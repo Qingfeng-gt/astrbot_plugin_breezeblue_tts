@@ -870,7 +870,8 @@ class BreezeBlueTTSPlugin(Star):
         """将文本合成为 Breeze Blue 语音并发送到当前会话。
 
         当用户明确要求“发语音/语音回复/读出来/朗读”，或你判断用声音表达更合适时调用。
-        每次调用应同时给出 text 和 instructions，让语音的语气与内容匹配。
+        每次调用应同时给出 text 和 instructions；instructions 由你根据上下文生成，
+        描述这句话应有的情绪和语气，而不是照抄用户原话。
         调用成功后语音会自动发送，不需要再重复朗读同一段文字。
 
         Args:
