@@ -155,7 +155,7 @@ class BreezeBlueClient:
     def _headers(self) -> dict[str, str]:
         return {
             "xi-api-key": self.api_key,
-            "user-agent": "astrbot-plugin-breezeblue-tts/1.2.0",
+            "user-agent": "astrbot-plugin-breezeblue-tts/1.2.1",
         }
 
     async def synthesize(self, request: TtsRequest) -> tuple[bytes, str | None]:
@@ -357,7 +357,7 @@ def _truthy(value: Any) -> bool:
     PLUGIN_NAME,
     "Qingfeng-gt",
     "使用 Breeze Blue（Breeze TTS 2）为 AstrBot 提供文字转语音。",
-    "v1.2.0",
+    "v1.2.1",
 )
 class BreezeBlueTTSPlugin(Star):
     def __init__(
