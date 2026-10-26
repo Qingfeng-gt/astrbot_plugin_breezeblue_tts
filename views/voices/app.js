@@ -93,7 +93,7 @@ function render() {
       isSelected ? "secondary" : "primary",
       () => selectVoice(voice.voice_id),
     );
-    action.disabled = isSelected || state.loading;
+    action.disabled = isSelected;
 
     card.append(info, action);
     els.list.append(card);
@@ -119,7 +119,6 @@ async function loadVoices() {
     state.voices = Array.isArray(data.voices) ? data.voices : [];
     state.selected = data.selected_voice_id || "";
     els.currentVoice.textContent = state.selected || "未设置";
-    render();
 
     const shown = state.voices.length;
     const total = Number.isFinite(Number(data.total)) ? Number(data.total) : shown;
@@ -132,6 +131,7 @@ async function loadVoices() {
     setStatus(`获取失败：${error.message || error}`, true);
   } finally {
     setLoading(false);
+    render();
   }
 }
 
