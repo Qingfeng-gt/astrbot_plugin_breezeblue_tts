@@ -640,6 +640,9 @@ class BreezeBlueTTSPlugin(Star):
             silk = await asyncio.to_thread(silk_path.read_bytes)
             if not silk:
                 raise ValueError("SILK 编码结果为空")
+            if b"#!SILK" not in silk[:10]:
+                raise ValueError("SILK 编码结果缺少 #!SILK 文件头")
+            logger.debug("NapCat SILK 编码成功：%d bytes", len(silk))
             return silk
         finally:
             for path in (wav_path, silk_path):
