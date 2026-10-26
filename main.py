@@ -7,10 +7,10 @@ This plugin talks to the Breeze Blue Developer API directly (no SDK required):
 
 It provides:
 
+* ``breeze_blue_tts`` tool - the model calls it when it wants to speak
 * ``/tts <text>``          - synthesize text and reply with a voice message
 * ``/tts_voice ...``       - list voices / select a per-session voice
-* ``/tts_auto ...``        - toggle automatic voice replies for a session
-* automatic voice replies  - optionally convert LLM text replies to voice
+* WebUI voice picker       - fetch voices and choose the default voice
 
 The implementation deliberately keeps all HTTP handling in this file so the
 plugin can be dropped into ``data/plugins`` without any packaging concerns.
@@ -31,7 +31,7 @@ from urllib.parse import quote
 
 import aiohttp
 from astrbot.api import AstrBotConfig, logger
-from astrbot.api.event import AstrMessageEvent, ResultContentType, filter
+from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Plain, Record, Reply
 from astrbot.api.star import Context, Star, register
 from astrbot.core.utils.astrbot_path import (
@@ -39,12 +39,19 @@ from astrbot.core.utils.astrbot_path import (
     get_astrbot_temp_path,
 )
 
+try:  # Plugin views / web APIs were added after AstrBot 4.16.
+    from astrbot.api.web import error_response, json_response, request
+except ImportError:  # pragma: no cover - older AstrBot still supports commands/tools
+    error_response = None
+    json_response = None
+    request = None
+
 PLUGIN_NAME = "astrbot_plugin_breezeblue_tts"
 DEFAULT_BASE_URL = "https://api.breeze.blue"
 DEFAULT_VOICE_ID = "voc_xeh3w54cqvnp"  # example voice from the Breeze Blue quickstart
 MAX_API_CHARS = 2000  # Breeze Blue allows 2000 chars for accounts with a higher quota
-DEFAULT_NAPCAT_AUDIO_MODE = "silk"
-NAPCAT_AUDIO_MODES = frozenset({"silk", "wav", "native"})
+DEFAULT_NAPCAT_AUDIO_MODE = "wav"
+NAPCAT_AUDIO_MODES = frozenset({"wav", "silk", "native"})
 
 _COMMAND_ARG_RE = re.compile(r"^\S+\s*", re.DOTALL)
 _SENTENCE_END_RE = re.compile(r"(?<=[。！？!?；;…\n])")
@@ -148,7 +155,7 @@ class BreezeBlueClient:
     def _headers(self) -> dict[str, str]:
         return {
             "xi-api-key": self.api_key,
-            "user-agent": "astrbot-plugin-breezeblue-tts/1.1.0",
+            "user-agent": "astrbot-plugin-breezeblue-tts/1.2.0",
         }
 
     async def synthesize(self, request: TtsRequest) -> tuple[bytes, str | None]:
@@ -350,7 +357,7 @@ def _truthy(value: Any) -> bool:
     PLUGIN_NAME,
     "Qingfeng-gt",
     "使用 Breeze Blue（Breeze TTS 2）为 AstrBot 提供文字转语音。",
-    "v1.1.0",
+    "v1.2.0",
 )
 class BreezeBlueTTSPlugin(Star):
     def __init__(
@@ -366,10 +373,24 @@ class BreezeBlueTTSPlugin(Star):
         self._state_lock = asyncio.Lock()
         self._semaphore = asyncio.Semaphore(self._max_concurrent())
         self._silk_fallback_warned = False
-        self._state: dict[str, dict[str, Any]] = {"auto_tts": {}, "voices": {}}
+        self._state: dict[str, dict[str, Any]] = {"voices": {}}
         self._state_path = (
             Path(get_astrbot_plugin_data_path()) / PLUGIN_NAME / "state.json"
         )
+
+        if request is not None and hasattr(context, "register_web_api"):
+            context.register_web_api(
+                f"/{PLUGIN_NAME}/voices",
+                self.api_list_voices,
+                ["GET"],
+                "List Breeze Blue voices",
+            )
+            context.register_web_api(
+                f"/{PLUGIN_NAME}/voices/select",
+                self.api_select_voice,
+                ["POST"],
+                "Select the default Breeze Blue voice",
+            )
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -479,17 +500,10 @@ class BreezeBlueTTSPlugin(Star):
     # -- persisted per-session state --------------------------------------
 
     def _load_state(self) -> None:
-        raw: dict[str, Any] = {"auto_tts": {}, "voices": {}}
+        raw: dict[str, Any] = {"voices": {}}
         try:
             data = json.loads(self._state_path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
-                auto_tts = data.get("auto_tts")
-                if isinstance(auto_tts, dict):
-                    raw["auto_tts"] = {
-                        str(k): bool(v)
-                        for k, v in auto_tts.items()
-                        if isinstance(v, (bool, int))
-                    }
                 voices = data.get("voices")
                 if isinstance(voices, dict):
                     raw["voices"] = {
@@ -526,12 +540,6 @@ class BreezeBlueTTSPlugin(Star):
         configured = str(self._get("voice_id", "") or "").strip()
         return override or configured or DEFAULT_VOICE_ID
 
-    def _auto_tts_enabled(self, umo: str) -> bool:
-        overrides = self._state.get("auto_tts", {})
-        if umo in overrides:
-            return _truthy(overrides[umo])
-        return self._get_bool("auto_tts", False)
-
     # -- client ------------------------------------------------------------
 
     async def _get_client(self) -> BreezeBlueClient:
@@ -553,13 +561,23 @@ class BreezeBlueTTSPlugin(Star):
             )
             return self._client
 
-    def _make_request(self, text: str, umo: str, platform: str = "") -> TtsRequest:
+    def _make_request(
+        self,
+        text: str,
+        umo: str,
+        platform: str = "",
+        instructions: str | None = None,
+    ) -> TtsRequest:
+        if instructions is None:
+            effective_instructions = self._instructions()
+        else:
+            effective_instructions = instructions.strip() or None
         return TtsRequest(
             text=text,
             voice_id=self._effective_voice(umo),
             model_id=self._model_id(),
             language_code=self._language_code(),
-            instructions=self._instructions(),
+            instructions=effective_instructions,
             output_format=self._output_format_for_platform(platform),
             speed=self._get_float("speed", 1.0, 0.5, 2.0),
             volume=self._get_float("volume", 1.0, 0.01, 2.0),
@@ -567,11 +585,17 @@ class BreezeBlueTTSPlugin(Star):
             use_speaker_boost=self._get_bool("use_speaker_boost", False),
         )
 
-    async def _synthesize(self, text: str, umo: str, platform: str = "") -> bytes:
+    async def _synthesize(
+        self,
+        text: str,
+        umo: str,
+        platform: str = "",
+        instructions: str | None = None,
+    ) -> bytes:
         client = await self._get_client()
-        request = self._make_request(text, umo, platform)
+        tts_request = self._make_request(text, umo, platform, instructions)
         async with self._semaphore:
-            audio, history_id = await client.synthesize(request)
+            audio, history_id = await client.synthesize(tts_request)
         if history_id:
             logger.debug("Breeze Blue 合成成功，history_item_id=%s", history_id)
         return audio
@@ -834,108 +858,137 @@ class BreezeBlueTTSPlugin(Star):
             "/tts_voice reset — 恢复插件默认音色"
         )
 
-    @filter.command("tts_auto", alias={"自动语音"})
-    async def tts_auto_command(self, event: AstrMessageEvent):
-        """开关本会话的自动语音回复。用法：/tts_auto [on|off|status]。"""
-        args = self._args(event).lower()
-        umo = event.unified_msg_origin
+    # -- LLM tool ----------------------------------------------------------
 
-        if args in {"status", "状态", ""}:
-            enabled = self._auto_tts_enabled(umo)
-            source = (
-                "本会话设置" if umo in self._state.get("auto_tts", {}) else "插件默认"
-            )
-            yield event.plain_result(
-                f"自动语音：{'开启' if enabled else '关闭'}\n"
-                f"来源：{source}\n"
-                "开启后，AI 的纯文本回复会合成为语音发送。"
-            )
-            return
+    @filter.llm_tool(name="breeze_blue_tts")
+    async def breeze_blue_tts(
+        self,
+        event: AstrMessageEvent,
+        text: str = "",
+        instructions: str = "",
+    ) -> str | None:
+        """将文本合成为 Breeze Blue 语音并发送到当前会话。
 
-        if args in {"on", "开", "开启", "true", "1"}:
-            enabled = True
-        elif args in {"off", "关", "关闭", "false", "0"}:
-            enabled = False
-        else:
-            yield event.plain_result("用法：/tts_auto [on|off|status]")
-            return
+        当用户明确要求“发语音/语音回复/读出来/朗读”，或你判断用声音表达更合适时调用。
+        每次调用应同时给出 text 和 instructions，让语音的语气与内容匹配。
+        调用成功后语音会自动发送，不需要再重复朗读同一段文字。
 
-        if not self._can_change_session_settings(event):
-            yield event.plain_result("群聊中仅 AstrBot 管理员可以修改自动语音设置。")
-            return
-
-        if enabled and not self._api_key():
-            yield event.plain_result(self._missing_api_key_message())
-            return
-
-        self._state.setdefault("auto_tts", {})[umo] = enabled
-        await self._save_state()
-        if enabled:
-            yield event.plain_result(
-                "已开启本会话的自动语音回复。\n"
-                "AI 的纯文本回复会通过 Breeze Blue 合成为语音；"
-                "流式回复和超长文本不会自动转换。"
-            )
-        else:
-            yield event.plain_result("已关闭本会话的自动语音回复。")
-
-    # -- automatic voice replies ------------------------------------------
-
-    @filter.on_decorating_result()
-    async def auto_tts_decorator(self, event: AstrMessageEvent) -> None:
-        """Optionally replace a pure-text LLM reply with a voice message."""
-        try:
-            await self._decorate_with_voice(event)
-        except BreezeBlueError as exc:
-            logger.warning("Breeze Blue 自动语音失败：%s", exc)
-        except Exception:
-            logger.exception("Breeze Blue 自动语音出现未预期错误")
-
-    async def _decorate_with_voice(self, event: AstrMessageEvent) -> None:
-        umo = event.unified_msg_origin
-        if not self._auto_tts_enabled(umo):
-            return
+        Args:
+            text(string): 要朗读的最终文本，只包含角色要说的话，不要包含舞台说明。
+            instructions(string): 与 text 同语言的语气/情绪/语速/风格指令；无要求留空。
+        """
         if not self._api_key():
-            return
-        if event.get_extra("breezeblue_tts_done"):
-            return
+            return self._missing_api_key_message()
 
-        result = event.get_result()
-        if result is None or not result.chain:
-            return
-        if result.async_stream is not None:
-            return
-        if result.result_content_type in (
-            ResultContentType.STREAMING_RESULT,
-            ResultContentType.STREAMING_FINISH,
-        ):
-            return
-        if self._get_bool("auto_tts_only_llm", True) and not result.is_llm_result():
-            return
-        if any(isinstance(component, Record) for component in result.chain):
-            return
-        if not all(isinstance(component, Plain) for component in result.chain):
-            return
-
-        text = "".join(component.text for component in result.chain).strip()
+        text = (text or "").strip()
         if not text:
-            return
-        if len(text) > self._max_chars():
-            logger.info(
-                "自动语音已跳过：文本 %d 字，超过上限 %d 字。",
-                len(text),
-                self._max_chars(),
-            )
-            return
+            return "text 不能为空，请提供要朗读的文本。"
 
-        audio = await self._synthesize(text, umo, event.get_platform_name())
-        record = await self._make_record(audio, text, event.get_platform_name())
-        if self._get_bool("auto_tts_keep_text", False):
-            result.chain.append(record)
-        else:
-            result.chain = [record]
-        result.use_t2i_ = False
-        event.set_extra("breezeblue_tts_done", True)
+        segments = split_text(text, self._max_chars())
+        if not segments:
+            return "没有可合成的文本。"
+        if len(segments) > self._max_segments():
+            return (
+                f"文本过长：共 {len(text)} 字，按每段 {self._max_chars()} 字需要 "
+                f"{len(segments)} 段，超过上限 {self._max_segments()} 段。"
+                "请缩短后重试。"
+            )
+
+        umo = event.unified_msg_origin
+        platform = event.get_platform_name()
+        records: list[Record] = []
+        try:
+            for segment in segments:
+                audio = await self._synthesize(
+                    segment,
+                    umo,
+                    platform,
+                    instructions=instructions.strip() or None,
+                )
+                records.append(await self._make_record(audio, segment, platform))
+            await event.send(event.chain_result(records))
+        except BreezeBlueError as exc:
+            logger.warning("Breeze Blue 工具调用失败：%s", exc)
+            return self._friendly_error(exc)
+        except Exception:
+            logger.exception("Breeze Blue 工具调用出现未预期错误")
+            return "语音合成或发送失败，请查看 AstrBot 日志获取详情。"
+        return None
+
+    # -- WebUI voice picker ------------------------------------------------
+
+    async def api_list_voices(self):
+        if request is None or json_response is None or error_response is None:
+            raise RuntimeError("AstrBot web API is unavailable")
+        if not self._api_key():
+            return error_response("尚未配置 Breeze Blue API Key", status_code=400)
+
+        search = str(request.query.get("search", "") or "").strip()
+        language_code = str(request.query.get("language_code", "") or "").strip()
+        if language_code and not _LANGUAGE_CODE_RE.match(language_code):
+            language_code = ""
+
+        try:
+            client = await self._get_client()
+            data = await client.list_voices(
+                search=search,
+                language_code=language_code,
+                limit=50,
+            )
+        except BreezeBlueError as exc:
+            logger.warning("Breeze Blue 音色视图获取失败：%s", exc)
+            return error_response(f"获取音色失败：{exc}", status_code=502)
+        except Exception:
+            logger.exception("Breeze Blue 音色视图出现未预期错误")
+            return error_response("获取音色失败，请查看 AstrBot 日志", status_code=500)
+
+        voices: list[dict[str, Any]] = []
+        for voice in data.get("voices") or []:
+            if not isinstance(voice, dict):
+                continue
+            voices.append(
+                {
+                    "voice_id": str(voice.get("voice_id") or ""),
+                    "name": str(voice.get("name") or "未命名"),
+                    "language_code": voice.get("language_code"),
+                    "gender": voice.get("gender"),
+                    "age": voice.get("age"),
+                    "accent": voice.get("accent"),
+                    "tone": voice.get("tone") or [],
+                }
+            )
+
+        return json_response(
+            {
+                "voices": voices,
+                "total": data.get("total", len(voices)),
+                "has_more": bool(data.get("has_more")),
+                "selected_voice_id": self._effective_voice(""),
+            }
+        )
+
+    async def api_select_voice(self):
+        if request is None or json_response is None or error_response is None:
+            raise RuntimeError("AstrBot web API is unavailable")
+
+        payload = await request.json(default={})
+        if not isinstance(payload, dict):
+            return error_response("请求体必须是 JSON 对象", status_code=400)
+        voice_id = str(payload.get("voice_id") or "").strip()
+        if not _VOICE_ID_RE.match(voice_id):
+            return error_response("voice_id 不合法", status_code=400)
+
+        try:
+            self.config["voice_id"] = voice_id
+            save = getattr(self.config, "save_config", None)
+            if callable(save):
+                save()
+        except Exception:
+            logger.exception("保存 Breeze Blue 默认音色失败")
+            return error_response("保存配置失败，请查看 AstrBot 日志", status_code=500)
+
+        logger.info("Breeze Blue 默认音色已更新为 %s", voice_id)
+        return json_response({"saved": True, "voice_id": voice_id})
 
     # -- voice listing -----------------------------------------------------
 

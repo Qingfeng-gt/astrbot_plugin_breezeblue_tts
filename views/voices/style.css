@@ -1,0 +1,212 @@
+:root {
+  color-scheme: light dark;
+  --bb-text: var(--el-text-color-primary, #1f2328);
+  --bb-muted: var(--el-text-color-secondary, #6b7280);
+  --bb-border: var(--el-border-color, #d9dee5);
+  --bb-card: var(--el-bg-color-overlay, #ffffff);
+  --bb-bg: var(--el-bg-color-page, #f6f7f9);
+  --bb-primary: var(--el-color-primary, #4f7cff);
+  --bb-primary-soft: color-mix(in srgb, var(--bb-primary) 12%, transparent);
+  --bb-danger: var(--el-color-danger, #d93025);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 20px;
+  color: var(--bb-text);
+  background: var(--bb-bg);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    "Microsoft YaHei",
+    sans-serif;
+}
+
+.page {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+}
+
+.muted {
+  color: var(--bb-muted);
+  font-size: 13px;
+}
+
+.current {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  border: 1px solid var(--bb-border);
+  border-radius: 10px;
+  background: var(--bb-card);
+  font-size: 13px;
+}
+
+.current strong {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+input,
+select,
+button {
+  min-height: 38px;
+  border: 1px solid var(--bb-border);
+  border-radius: 8px;
+  background: var(--bb-card);
+  color: var(--bb-text);
+  font: inherit;
+}
+
+input,
+select {
+  padding: 0 12px;
+}
+
+input {
+  flex: 1 1 260px;
+}
+
+select {
+  min-width: 120px;
+}
+
+button {
+  padding: 0 16px;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+button.primary {
+  border-color: var(--bb-primary);
+  background: var(--bb-primary);
+  color: #fff;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--bb-primary);
+  border-color: var(--bb-primary);
+}
+
+.status {
+  min-height: 20px;
+  margin: 6px 0 14px;
+  color: var(--bb-muted);
+  font-size: 13px;
+}
+
+.status.error {
+  color: var(--bb-danger);
+}
+
+.list {
+  display: grid;
+  gap: 10px;
+}
+
+.voice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px;
+  border: 1px solid var(--bb-border);
+  border-radius: 12px;
+  background: var(--bb-card);
+}
+
+.voice.selected {
+  border-color: var(--bb-primary);
+  background: var(--bb-primary-soft);
+}
+
+.voice-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+  flex: 1 1 420px;
+}
+
+.voice-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bb-primary);
+  color: #fff;
+  font-size: 11px;
+}
+
+.voice-id {
+  color: var(--bb-muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.voice-meta {
+  font-size: 12px;
+}
+
+.empty {
+  padding: 28px;
+  border: 1px dashed var(--bb-border);
+  border-radius: 12px;
+  color: var(--bb-muted);
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  body {
+    padding: 14px;
+  }
+
+  .voice {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .voice button {
+    width: 100%;
+  }
+}

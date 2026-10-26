@@ -29,5 +29,8 @@ jobs:
       - name: Lint
         run: ruff check main.py tests
 
+      - name: Check plugin view script
+        run: node --check views/voices/app.js
+
       - name: Run offline tests
         run: python tests/test_plugin_smoke.py

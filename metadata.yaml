@@ -1,8 +1,8 @@
 name: astrbot_plugin_breezeblue_tts
 display_name: Breeze Blue 语音
-desc: 使用 Breeze Blue（Breeze TTS 2）为 AstrBot 提供高质量文字转语音，支持指令合成与 AI 回复自动转语音。
-short_desc: Breeze Blue 文字转语音，支持 /tts 指令与自动语音回复。
-version: v1.1.0
+desc: 使用 Breeze Blue（Breeze TTS 2）为 AstrBot 提供高质量文字转语音，支持 LLM 工具按需调用、指令合成与 WebUI 音色选择。
+short_desc: Breeze Blue 文字转语音，支持 LLM 工具按需调用、/tts 指令与音色选择。
+version: v1.2.0
 author: Qingfeng-gt
 repo: https://github.com/Qingfeng-gt/astrbot_plugin_breezeblue_tts
 astrbot_version: ">=4.16,<5"

@@ -9,13 +9,13 @@
 
 ## 功能
 
-- `/tts <文本>`：合成为语音消息；也可以引用一条消息后发送 `/tts`。
+- **LLM 工具 `breeze_blue_tts`**：由模型在需要语音时主动调用，不会把所有回复默认转成语音；每次调用同时携带朗读文本和表演指令。
+- `/tts <文本>`：手动合成语音；也可以引用一条消息后发送 `/tts`。
 - `/tts_voice list [关键词]`：搜索账号可用的音色。
 - `/tts_voice use <voice_id>`：为当前会话切换音色（持久化保存）。
 - `/tts_voice show` / `/tts_voice reset`：查看或恢复默认音色。
-- `/tts_auto on|off|status`：按会话开启/关闭“AI 回复自动转语音”。
-- 自动语音：AI 的纯文本回复可自动替换为语音；可配置是否保留文字。
-- NapCat/QQ：默认直接生成腾讯 SILK 语音，绕过 NapCat 的 WAV→SILK 二次转换，避免 QQ 语音杂音。
+- **WebUI 音色选择视图**：点击“获取音色”，查看名称和 Voice ID，并直接设为全局默认音色。
+- NapCat/QQ：默认使用 `wav` 模式，适配当前 QQ 环境；也保留 `silk` / `native` 回退。
 - 长文本按标点分段合成（受 Breeze Blue 每请求 1000/2000 字符限制）。
 - 完整的错误处理：401、403、404、422、429（含 Retry-After）、503/504。
 
@@ -39,22 +39,20 @@
 3. 打开插件配置，填写 **Breeze Blue API Key**（形如 `brz_...`）。API Key 在 Breeze Blue Developer Console 的 API keys 页面创建。
 
    - 也可以通过环境变量提供：`BREEZE_API_KEY=brz_...`。配置项优先。
-   - 首次使用建议先执行 `/tts_voice list` 确认音色可用。
+   - 首次使用建议打开插件详情页的「Breeze Blue 音色」视图，点击“获取音色”并选择一个默认音色。
 
-4. 发送 `/tts 你好，这是一段测试语音`。
+4. 发送 `/tts 你好，这是一段测试语音`，或在对话中让 AI 调用语音工具。
 
 ## 指令
 
-| 指令 | 说明 |
+| 指令 / 工具 | 说明 |
 | --- | --- |
-| `/tts <文本>` | 合成语音。参数为空时会读取被引用消息的文本。 |
+| `breeze_blue_tts`（LLM 工具） | 模型在需要语音时调用；参数 `text` + `instructions`，合成后直接发送语音。 |
+| `/tts <文本>` | 手动合成语音。参数为空时会读取被引用消息的文本。 |
 | `/tts_voice list [关键词]` | 搜索可用音色，显示名称、`voice_id`、语言、性别、年龄。 |
 | `/tts_voice use <voice_id>` | 当前会话使用指定音色，保存到 `data/plugin_data`。 |
-| `/tts_voice show` | 显示当前音色、来源和模型。 |
+| `/tts_voice show` | 显示当前音色、来源、模型和 NapCat 语音格式。 |
 | `/tts_voice reset` | 删除本会话音色覆盖，恢复插件默认音色。 |
-| `/tts_auto on` | 开启本会话的 AI 回复自动语音。 |
-| `/tts_auto off` | 关闭本会话的 AI 回复自动语音。 |
-| `/tts_auto status` | 查看当前状态和来源（会话设置/插件默认）。 |
 
 默认情况下，群聊里只有 AstrBot 管理员能修改会话设置（`session_settings_admin_only`），私聊不受限制。
 
@@ -66,12 +64,12 @@
 | --- | --- | --- | --- |
 | `api_key` | string(secret) | 空 | Breeze Blue API Key，留空时读取环境变量 `BREEZE_API_KEY`。 |
 | `api_base` | string | `https://api.breeze.blue` | API 地址，一般无需修改。 |
-| `voice_id` | string | `voc_xeh3w54cqvnp` | 默认音色，示例值来自 Breeze Blue 快速开始。 |
+| `voice_id` | string | `voc_xeh3w54cqvnp` | 默认音色。推荐在 WebUI 音色视图里获取并选择。 |
 | `model_id` | string | 空 | 可选 `breeze-tts-2` / `breeze-tts-2-multilingual`，留空自动选择。 |
 | `language_code` | string | `zh` | ISO 639-1 两字母代码，留空自动。 |
 | `output_format` | string | `mp3` | `mp3`、`wav`、`wav_48000`、`opus`、`aac`、`flac`、`pcm` 等；非 NapCat 平台使用。 |
-| `napcat_audio_mode` | string | `silk` | NapCat 专用：`silk`（推荐，插件直接生成腾讯 SILK）、`wav`（24kHz PCM，由 NapCat 转换）、`native`（Breeze 原始格式，由 NapCat 转换）。 |
-| `instructions` | text | 空 | 表演指令，例如“用温柔、平静的语气说”。 |
+| `napcat_audio_mode` | string | `wav` | NapCat 专用：`wav`（推荐，当前 QQ 环境实测可用）、`silk`（插件直接生成腾讯 SILK，部分 NapCat 版本发送不出去）、`native`（Breeze 原始格式，由 NapCat 转换）。 |
+| `instructions` | text | 空 | 工具调用没有提供 `instructions` 时使用的默认表演指令。推荐让模型在工具调用中随文本一起生成。 |
 | `speed` | float | `1.0` | 0.5–2.0。 |
 | `volume` | float | `1.0` | 0.01–2.0。 |
 | `guidance_scale` | float | `1.0` | 1–10，表现力引导强度。 |
@@ -81,48 +79,72 @@
 | `max_segments` | int | `3` | 长文本最大分段数，超过则拒绝。 |
 | `max_concurrent` | int | `2` | 同时进行的合成请求数。 |
 | `tts_send_text` | bool | `false` | `/tts` 是否同时发送原文。 |
-| `auto_tts` | bool | `false` | 所有会话默认开启自动语音。 |
-| `auto_tts_only_llm` | bool | `true` | 只转换 LLM 生成的结果。 |
-| `auto_tts_keep_text` | bool | `false` | 自动语音时是否保留文字消息。 |
 | `session_settings_admin_only` | bool | `true` | 群聊中仅管理员可改会话设置。 |
 | `command_admin_only` | bool | `false` | `/tts` 仅限管理员使用，避免普通用户消耗额度。 |
 | `voice_list_limit` | int | `10` | `/tts_voice list` 显示条数。 |
 
 ## NapCat / QQ 语音
 
-AstrBot 的 `aiocqhttp` 适配器会把 `Record` 统一转成 WAV，再交给 NapCat；NapCat 发送 QQ 语音时还要把 WAV 转成腾讯 SILK。这个二次转换是 QQ 语音出现杂音、电流声的高发环节。
+AstrBot 的 `aiocqhttp` 适配器会把 `Record` 转成 WAV，再交给 NapCat；NapCat 发送 QQ 语音时还要把 WAV 转成腾讯 SILK。
 
-插件对 `aiocqhttp`（NapCat）默认使用 `napcat_audio_mode=silk`：
+当前实测结果：
+
+- `wav`：QQ 语音正常。
+- `silk`：插件直接生成的 SILK 在当前 NapCat 环境**发送不出去**，因此不再作为默认值。
+
+所以默认配置为 `napcat_audio_mode=wav`：
 
 1. 向 Breeze Blue 请求原生 24kHz PCM WAV；
-2. 用 AstrBot 自带的 `wav_to_tencent_silk`（pysilk）生成 QQ 兼容的 `0x02#!SILK_V3` 音频；
-3. 通过一个透传 `Record` 子类把 SILK 直接交给 NapCat，NapCat 检测到已经是 SILK 后不会再转码。
+2. AstrBot 的 aiocqhttp 适配器以 WAV 交给 NapCat；
+3. NapCat 转成 SILK 并发送。
 
-如果仍然有问题，可以在插件配置里依次尝试：
+可选模式：
 
-- `silk`：推荐，直接发送 SILK，绕过 NapCat 二次转码。
-- `wav`：发送 24kHz PCM WAV，由 NapCat 转换。
+- `wav`（默认，推荐）：当前环境实测可用。
+- `silk`：插件直接生成 `0x02#!SILK_V3`，绕过 NapCat 二次转换；如果 NapCat 收不到语音就不要使用。
 - `native`：发送 Breeze 原始格式（通常是 MP3），由 NapCat 转换。
 
-同时建议：
+建议升级 **NapCat ≥ v4.18.36**，并只启用一套 TTS 方案，避免多个 TTS 同时改写回复。NapCat 的 `wav`/`silk` 模式会忽略 `output_format`，其他平台仍使用 `output_format`。
 
-- 升级 **NapCat ≥ v4.18.36**，该版本修复了音频格式识别、SILK 时长和重采样尾帧处理。
-- 只启用一套 TTS 方案，避免 AstrBot 自带 TTS 与其他 TTS 插件同时改写回复。
-- 流式回复不会被本插件自动转语音；如需自动语音，请关闭流式输出。
+## LLM 语音工具
 
-## 自动语音的边界
+插件注册名为 `breeze_blue_tts` 的 LLM 工具。AI 在以下场景主动调用：
 
-为了不破坏消息内容、也避免意外扣费，自动语音只在以下条件全部满足时触发：
+- 用户明确要求“发语音 / 语音回复 / 读出来 / 朗读”；
+- 或模型判断用声音表达更合适。
 
-1. 本会话的自动语音已开启；
-2. 结果是 AI（LLM）生成的，且不是流式结果；
-3. 消息链中只有纯文本，没有图片、At、语音等组件；
-4. 文本不为空且不超过 `max_chars`；
-5. 已经配置了 API Key。
+不会把所有回复默认转成语音。工具参数：
 
-否则保持原文字回复。转换失败时也会自动回退为原文字，并在 AstrBot 日志中记录原因。流式输出不会被转换。
+| 参数 | 说明 |
+| --- | --- |
+| `text` | 要朗读的最终文本 |
+| `instructions` | 与 `text` 同语言的表演指令（语气、情绪、语速、风格） |
 
-自动语音会把每条符合条件的 AI 回复送到 Breeze Blue，产生相应费用。建议按需开启，必要时把 `/tts` 设为仅管理员可用。
+调用示例（由模型生成）：
+
+```json
+{
+  "name": "breeze_blue_tts",
+  "arguments": {
+    "text": "今天辛苦了，早点休息。",
+    "instructions": "温柔、放慢语速、带一点笑意地说"
+  }
+}
+```
+
+工具会合成并直接发送语音；调用成功后不需要再重复朗读同一段文字。`instructions` 是随每次文本一起传给 Breeze Blue 的，配置里的 `instructions` 只在工具没有提供时作为默认值。如果模型不调用工具，可以在人格/系统提示词中明确要求“需要语音时使用 `breeze_blue_tts` 工具”，并确认当前模型提供商/Agent 已启用工具调用。
+
+## WebUI 音色选择
+
+AstrBot 的 `_conf_schema.json` 不支持在单个配置项里嵌入自定义按钮，因此插件按 AstrBot 官方“插件可视化视图”规范提供了 `views/voices` 页面：
+
+1. 在 AstrBot 插件页打开本插件详情；
+2. 进入「Breeze Blue 音色」视图；
+3. 点击 **获取音色**；
+4. 列表会显示音色名称、Voice ID、语言、性别、年龄、风格；
+5. 点击 **设为默认**，直接写入 `voice_id` 配置。
+
+该视图依赖 AstrBot 的插件视图/Plugin API（约 v4.24.1 之后）。旧版本仍可使用 `/tts_voice list` 和 `/tts_voice use <voice_id>`。
 
 ## Breeze Blue 接口说明
 
@@ -164,7 +186,7 @@ Content-Type: application/json
   AstrBot/data/plugin_data/astrbot_plugin_breezeblue_tts/state.json
   ```
 
-  内容只有会话 UMO 到音色/自动语音开关的映射，不包含聊天内容。
+  内容只有会话 UMO 到音色覆盖的映射，不包含聊天内容。
 
 ## 故障排查
 
@@ -175,17 +197,18 @@ Content-Type: application/json
 | 404 | `voice_id` 不存在；用 `/tts_voice list` 重新选择。 |
 | 422 | 参数不合法，常见原因：`language_code` 不是两字母、模型与语言不兼容、文本超过长度限制。 |
 | 429 | 触发限流，按 `Retry-After` 等待后重试，或降低 `max_concurrent`。 |
-| QQ 语音是杂音/电流声 | 确认 `napcat_audio_mode=silk`；升级 NapCat ≥ v4.18.36；关闭其他 TTS 插件；仍不行依次尝试 `wav`、`native`。 |
-| NapCat 发送语音失败或没有声音 | 改用 `wav` 或 `native`，检查 AstrBot/NapCat 日志中的 ffmpeg、ntsilk、pysilk 错误；确认 NapCat 的语音功能可用。 |
-| 语音发送失败且日志提到 ffmpeg | 安装 ffmpeg 并加入 PATH；NapCat 的 `silk` 模式本身不需要系统 ffmpeg，但 `wav`/`native` 回退可能需要。 |
-| 自动语音不触发 | 检查 `/tts_auto status`、是否流式输出、回复是否含图片/At、文本是否超过 `max_chars`。 |
+| QQ 语音是杂音/电流声 | 确认 `napcat_audio_mode=wav`；升级 NapCat ≥ v4.18.36；关闭其他 TTS 插件。 |
+| NapCat 发送语音失败或没有声音 | 使用 `wav` 或 `native`；`silk` 在当前环境可能发送不出去。检查 AstrBot/NapCat 日志中的 ffmpeg、ntsilk 错误。 |
+| 语音发送失败且日志提到 ffmpeg | 安装 ffmpeg 并加入 PATH；`wav`/`native` 模式依赖 NapCat 的音频转换。 |
+| 模型不调用语音工具 | 在人格/系统提示词中要求“需要语音时调用 `breeze_blue_tts`”；确认模型提供商/Agent 已启用工具调用。 |
+| 找不到“获取音色”按钮 | 打开插件详情页里的「Breeze Blue 音色」视图；该功能需要 AstrBot 插件视图支持（约 4.24.1+）。 |
 
 ## 开发与测试
 
-插件附带了离线测试：使用假的 `astrbot` 模块和本地 aiohttp 测试服务器，覆盖文本分段、请求体、HTTP 请求/响应、错误映射、指令和自动语音流程，不需要 AstrBot 实例或真实 API Key。
+插件附带了 29 个离线测试：使用假的 `astrbot` 模块和本地 aiohttp 测试服务器，覆盖文本分段、请求体、HTTP 请求/响应、错误映射、指令、LLM 工具、WebUI 音色 API 和 NapCat 音频模式，不需要 AstrBot 实例或真实 API Key。
 
 ```bash
-uv run --python 3.13 --with aiohttp python tests/test_plugin_smoke.py
+uv run --python 3.13 --with aiohttp --no-project python tests/test_plugin_smoke.py
 ```
 
 代码风格使用 ruff（配置见 `pyproject.toml`）：
@@ -204,9 +227,10 @@ uvx ruff format main.py tests
 ## 与 AstrBot 规范对应
 
 - 插件唯一名以 `astrbot_plugin_` 开头，入口文件为 `main.py`。
-- 插件类继承 `Star`，使用 `@filter.command` 注册指令，使用 `@filter.on_decorating_result` 修改发送前的结果。
+- 插件类继承 `Star`，使用 `@filter.command` 注册指令，使用 `@filter.llm_tool` 注册按需调用的语音工具。
 - 语音消息使用 `astrbot.api.message_components.Record`，由 AstrBot 按平台适配为原生语音。
 - 配置通过 `_conf_schema.json` 定义，并在 `__init__` 注入 `AstrBotConfig`。
+- 音色选择使用 AstrBot 官方插件视图（`views/voices`）和 `context.register_web_api()`。
 - 持久化数据写入 `data/plugin_data/`，不写入插件目录。
 
 参考：[AstrBot 插件开发指南](https://docs.astrbot.app/dev/star/plugin-new.html)、[插件配置](https://docs.astrbot.app/dev/star/guides/plugin-config.html)。

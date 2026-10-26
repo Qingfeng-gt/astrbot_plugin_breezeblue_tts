@@ -2,14 +2,13 @@
 
 AstrBot is not installed in this test environment, so minimal fake ``astrbot``
 modules are injected before importing ``main.py``. The tests cover the pure
-logic (text splitting, request payloads, error mapping) and the command /
-decoration flows with a stubbed synthesizer.
+logic (text splitting, request payloads, error mapping), commands, the LLM
+tool, the WebUI voice APIs, and NapCat audio modes with a stubbed synthesizer.
 """
 
 from __future__ import annotations
 
 import base64
-import enum
 import importlib.util
 import json
 import logging
@@ -27,20 +26,9 @@ ROOT = Path(__file__).resolve().parents[1]
 TEMP_DATA = Path(tempfile.mkdtemp(prefix="bbtts-test-"))
 
 
-class FakeResultContentType(enum.Enum):
-    GENERAL_RESULT = enum.auto()
-    STREAMING_RESULT = enum.auto()
-    STREAMING_FINISH = enum.auto()
-
-
 class FakePlain:
     def __init__(self, text: str) -> None:
         self.text = text
-
-
-class FakeImage:
-    def __init__(self, file: str = "image.png") -> None:
-        self.file = file
 
 
 class FakeRecord:
@@ -54,6 +42,23 @@ class FakeReply:
         self.message_str = message_str
 
 
+class FakeRequest:
+    def __init__(self) -> None:
+        self.query: dict = {}
+        self._json: dict = {}
+
+    async def json(self, default=None):
+        return self._json
+
+
+def fake_json_response(data, **kwargs):
+    return {"status": "ok", "data": data}
+
+
+def fake_error_response(message, status_code=400):
+    return {"status": "error", "message": message, "status_code": status_code}
+
+
 class FakeFilter:
     def command(self, *args, **kwargs):
         def decorator(func):
@@ -61,7 +66,7 @@ class FakeFilter:
 
         return decorator
 
-    def on_decorating_result(self, *args, **kwargs):
+    def llm_tool(self, *args, **kwargs):
         def decorator(func):
             return func
 
@@ -74,7 +79,8 @@ class FakeStar:
 
 
 class FakeContext:
-    pass
+    def register_web_api(self, *args, **kwargs) -> None:
+        pass
 
 
 class FakeEvent:
@@ -86,7 +92,6 @@ class FakeEvent:
         umo: str = "aiocqhttp:FriendMessage:1",
         private: bool = True,
         admin: bool = False,
-        result=None,
         platform_name: str = "webchat",
     ) -> None:
         self.message_str = message_str
@@ -94,8 +99,8 @@ class FakeEvent:
         self.unified_msg_origin = umo
         self.private = private
         self.admin = admin
-        self._result = result
         self._extras: dict = {}
+        self.sent: list = []
         self.platform_name = platform_name
 
     def get_platform_name(self) -> str:
@@ -125,27 +130,8 @@ class FakeEvent:
     def set_extra(self, key, value) -> None:
         self._extras[key] = value
 
-    def get_result(self):
-        return self._result
-
-
-class FakeMessageEventResult:
-    def __init__(
-        self,
-        chain,
-        *,
-        llm: bool = True,
-        content_type=FakeResultContentType.GENERAL_RESULT,
-        async_stream=None,
-    ) -> None:
-        self.chain = chain
-        self.llm = llm
-        self.result_content_type = content_type
-        self.async_stream = async_stream
-        self.use_t2i_ = None
-
-    def is_llm_result(self) -> bool:
-        return self.llm
+    async def send(self, message) -> None:
+        self.sent.append(message)
 
 
 def _install_fake_astrbot() -> None:
@@ -159,8 +145,13 @@ def _install_fake_astrbot() -> None:
     api_event = types.ModuleType("astrbot.api.event")
     api_event.__path__ = []
     api_event.AstrMessageEvent = FakeEvent
-    api_event.ResultContentType = FakeResultContentType
     api_event.filter = FakeFilter()
+
+    api_web = types.ModuleType("astrbot.api.web")
+    api_web.__path__ = []
+    api_web.request = FakeRequest()
+    api_web.json_response = fake_json_response
+    api_web.error_response = fake_error_response
 
     api_components = types.ModuleType("astrbot.api.message_components")
     api_components.__path__ = []
@@ -187,6 +178,7 @@ def _install_fake_astrbot() -> None:
             "astrbot": astrbot,
             "astrbot.api": api,
             "astrbot.api.event": api_event,
+            "astrbot.api.web": api_web,
             "astrbot.api.message_components": api_components,
             "astrbot.api.star": api_star,
             "astrbot.core": core,
@@ -211,7 +203,7 @@ def make_plugin(**overrides):
         "voice_id": "voc_test",
         "language_code": "zh",
         "model_id": "",
-        "auto_tts": False,
+        "napcat_audio_mode": "wav",
     }
     config.update(overrides)
     return plugin_main.BreezeBlueTTSPlugin(FakeContext(), config)
@@ -390,80 +382,171 @@ class PluginFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results[0][0], "plain")
         self.assertIn("文本过长", results[0][1])
 
-    async def test_auto_decorator_replaces_plain_text(self):
-        plugin = make_plugin(auto_tts=True)
-        plugin._synthesize = lambda text, umo, platform="": _async_bytes(b"audio")
-        result = FakeMessageEventResult([FakePlain("你好")])
-        event = FakeEvent(result=result)
+    async def test_llm_tool_sends_voice_with_instructions(self):
+        plugin = make_plugin()
+        calls = []
 
-        await plugin._decorate_with_voice(event)
+        async def fake_synthesize(
+            text,
+            umo,
+            platform="",
+            instructions=None,
+        ):
+            calls.append((text, umo, platform, instructions))
+            return b"audio"
 
-        self.assertEqual(len(result.chain), 1)
-        self.assertIsInstance(result.chain[0], FakeRecord)
-        self.assertEqual(result.chain[0].text, "你好")
-        self.assertFalse(result.use_t2i_)
-        self.assertTrue(event.get_extra("breezeblue_tts_done"))
+        plugin._synthesize = fake_synthesize
+        event = FakeEvent(platform_name="aiocqhttp")
 
-    async def test_auto_decorator_keeps_text_when_configured(self):
-        plugin = make_plugin(auto_tts=True, auto_tts_keep_text=True)
-        plugin._synthesize = lambda text, umo, platform="": _async_bytes(b"audio")
-        result = FakeMessageEventResult([FakePlain("你好")])
-        event = FakeEvent(result=result)
-
-        await plugin._decorate_with_voice(event)
-
-        self.assertEqual(len(result.chain), 2)
-        self.assertIsInstance(result.chain[0], FakePlain)
-        self.assertIsInstance(result.chain[1], FakeRecord)
-
-    async def test_auto_decorator_skips_mixed_content(self):
-        plugin = make_plugin(auto_tts=True)
-        plugin._synthesize = lambda text, umo, platform="": _async_bytes(b"audio")
-        result = FakeMessageEventResult([FakePlain("你好"), FakeImage()])
-        event = FakeEvent(result=result)
-
-        await plugin._decorate_with_voice(event)
-
-        self.assertEqual(len(result.chain), 2)
-        self.assertIsInstance(result.chain[1], FakeImage)
-
-    async def test_auto_decorator_skips_streaming(self):
-        plugin = make_plugin(auto_tts=True)
-        plugin._synthesize = lambda text, umo, platform="": _async_bytes(b"audio")
-        result = FakeMessageEventResult(
-            [FakePlain("你好")],
-            content_type=FakeResultContentType.STREAMING_RESULT,
+        result = await plugin.breeze_blue_tts(
+            event,
+            text="你好",
+            instructions="温柔、平静地说",
         )
-        event = FakeEvent(result=result)
 
-        await plugin._decorate_with_voice(event)
+        self.assertIsNone(result)
+        self.assertEqual(
+            calls,
+            [
+                (
+                    "你好",
+                    event.unified_msg_origin,
+                    "aiocqhttp",
+                    "温柔、平静地说",
+                )
+            ],
+        )
+        self.assertEqual(len(event.sent), 1)
+        kind, chain = event.sent[0]
+        self.assertEqual(kind, "chain")
+        self.assertEqual(len(chain), 1)
+        self.assertIsInstance(chain[0], FakeRecord)
+        self.assertEqual(chain[0].text, "你好")
 
-        self.assertIsInstance(result.chain[0], FakePlain)
+    async def test_llm_tool_requires_text(self):
+        plugin = make_plugin()
+        event = FakeEvent()
+
+        result = await plugin.breeze_blue_tts(event, text="   ")
+
+        self.assertIsInstance(result, str)
+        self.assertIn("text", result)
+        self.assertEqual(event.sent, [])
+
+    async def test_llm_tool_reports_missing_api_key(self):
+        plugin = make_plugin()
+        plugin._api_key = lambda: ""
+        event = FakeEvent()
+
+        result = await plugin.breeze_blue_tts(event, text="你好")
+
+        self.assertIn("API Key", result)
+        self.assertEqual(event.sent, [])
+
+    async def test_llm_tool_maps_breeze_error(self):
+        plugin = make_plugin()
+
+        async def fake_synthesize(
+            text,
+            umo,
+            platform="",
+            instructions=None,
+        ):
+            raise plugin_main.BreezeBlueError("bad key", status=401)
+
+        plugin._synthesize = fake_synthesize
+        event = FakeEvent()
+
+        result = await plugin.breeze_blue_tts(event, text="你好")
+
+        self.assertIn("401", result)
 
     async def test_state_round_trip(self):
         plugin = make_plugin()
         plugin._state["voices"]["umo:1"] = "voc_saved"
-        plugin._state["auto_tts"]["umo:1"] = True
         await plugin._save_state()
 
         restored = make_plugin()
         restored._load_state()
         self.assertEqual(restored._state["voices"]["umo:1"], "voc_saved")
-        self.assertTrue(restored._state["auto_tts"]["umo:1"])
 
-    async def test_auto_command_toggles_session_state(self):
-        plugin = make_plugin(auto_tts=False)
-        event = FakeEvent("/tts_auto on")
+    async def test_api_list_voices(self):
+        plugin = make_plugin()
+        captured = {}
 
-        results = [result async for result in plugin.tts_auto_command(event)]
-        self.assertEqual(results[0][0], "plain")
-        self.assertTrue(plugin._auto_tts_enabled(event.unified_msg_origin))
+        class FakeClient:
+            async def list_voices(
+                self,
+                *,
+                search: str = "",
+                language_code: str = "",
+                limit: int = 10,
+            ):
+                captured.update(
+                    search=search,
+                    language_code=language_code,
+                    limit=limit,
+                )
+                return {
+                    "voices": [
+                        {
+                            "voice_id": "voc_1",
+                            "name": "测试音色",
+                            "language_code": "zh",
+                            "gender": "female",
+                            "age": "young",
+                            "tone": ["calm"],
+                        }
+                    ],
+                    "total": 1,
+                    "has_more": False,
+                }
 
-        results = [
-            result
-            async for result in plugin.tts_auto_command(FakeEvent("/tts_auto off"))
-        ]
-        self.assertFalse(plugin._auto_tts_enabled(event.unified_msg_origin))
+        async def fake_get_client():
+            return FakeClient()
+
+        plugin._get_client = fake_get_client
+        plugin_main.request.query = {"search": "女声", "language_code": "zh"}
+
+        response = await plugin.api_list_voices()
+
+        self.assertEqual(response["status"], "ok")
+        self.assertEqual(
+            captured,
+            {"search": "女声", "language_code": "zh", "limit": 50},
+        )
+        data = response["data"]
+        self.assertEqual(data["selected_voice_id"], "voc_test")
+        self.assertEqual(data["voices"][0]["voice_id"], "voc_1")
+        self.assertEqual(data["voices"][0]["name"], "测试音色")
+
+    async def test_api_select_voice(self):
+        plugin = make_plugin()
+        plugin_main.request._json = {"voice_id": "voc_new"}
+
+        response = await plugin.api_select_voice()
+
+        self.assertEqual(response["status"], "ok")
+        self.assertEqual(plugin.config["voice_id"], "voc_new")
+
+    async def test_api_select_voice_rejects_invalid_id(self):
+        plugin = make_plugin()
+        plugin_main.request._json = {"voice_id": "../bad"}
+
+        response = await plugin.api_select_voice()
+
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(response["status_code"], 400)
+        self.assertEqual(plugin.config["voice_id"], "voc_test")
+
+    async def test_api_list_voices_requires_api_key(self):
+        plugin = make_plugin()
+        plugin._api_key = lambda: ""
+
+        response = await plugin.api_list_voices()
+
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(response["status_code"], 400)
 
     async def test_group_session_settings_require_admin(self):
         plugin = make_plugin()
@@ -593,13 +676,6 @@ class ClientHTTPTests(unittest.IsolatedAsyncioTestCase):
             captured["query"],
             {"page_size": "5", "search": "女声", "language_code": "zh"},
         )
-
-
-def _async_bytes(value: bytes):
-    async def inner():
-        return value
-
-    return inner()
 
 
 if __name__ == "__main__":

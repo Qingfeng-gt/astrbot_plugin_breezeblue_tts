@@ -17,7 +17,7 @@
     "description": "默认音色 Voice ID",
     "type": "string",
     "default": "voc_xeh3w54cqvnp",
-    "hint": "默认值是 Breeze Blue 快速开始中的示例音色。可以用 /tts_voice list 搜索音色，再用 /tts_voice use <voice_id> 为单个会话切换。"
+    "hint": "推荐打开插件详情页的「Breeze Blue 音色」视图，点击获取音色后直接选择；也可以手动填写，或用 /tts_voice list 搜索、/tts_voice use <voice_id> 为单个会话切换。"
   },
   "model_id": {
     "description": "模型",
@@ -50,29 +50,29 @@
   "napcat_audio_mode": {
     "description": "NapCat 语音发送格式",
     "type": "string",
-    "default": "silk",
+    "default": "wav",
     "options": [
-      "silk",
       "wav",
+      "silk",
       "native"
     ],
     "labels": [
-      "SILK（推荐）",
-      "WAV（24kHz PCM）",
+      "WAV（推荐）",
+      "SILK（部分 NapCat 无法发送）",
       "原始格式（交给 NapCat 转换）"
     ],
     "subtitles": [
+      "发送 Breeze 的 24kHz WAV，由 NapCat 转换；当前 QQ 环境实测可用",
       "插件直接生成腾讯 SILK，绕过 NapCat 的 WAV→SILK 二次转换",
-      "发送 Breeze 的 24kHz WAV，由 NapCat 转换",
       "发送 Breeze 原始音频（通常为 MP3），由 NapCat 转换"
     ],
-    "hint": "仅对 aiocqhttp/NapCat 生效。QQ 语音有杂音时保持 silk；如果 NapCat 版本较老或 SILK 发送失败，可尝试 wav 或 native。非 NapCat 平台始终使用 output_format。"
+    "hint": "仅对 aiocqhttp/NapCat 生效。当前环境推荐 wav；如果 WAV 出现杂音，可尝试 silk；SILK 发送不出去时用 wav 或 native。非 NapCat 平台始终使用 output_format。"
   },
   "instructions": {
-    "description": "表演指令",
+    "description": "默认表演指令",
     "type": "text",
     "default": "",
-    "hint": "可选，例如“用温柔、平静的语气说”。需与合成文本的语言一致；留空则不发送。"
+    "hint": "工具调用未提供 instructions 时使用的默认值，例如“用温柔、平静的语气说”。需与文本语言一致。推荐让模型在工具调用中随文本一起生成表演指令。"
   },
   "speed": {
     "description": "语速",
@@ -163,29 +163,11 @@
     "default": false,
     "hint": "开启后，/tts 会在语音前额外发送一条原文文本。"
   },
-  "auto_tts": {
-    "description": "默认开启自动语音回复",
-    "type": "bool",
-    "default": false,
-    "hint": "开启后，AI 的纯文本回复会自动合成为语音。每个会话可以用 /tts_auto on|off 覆盖。流式回复不会被转换。"
-  },
-  "auto_tts_only_llm": {
-    "description": "只转换 AI 回复",
-    "type": "bool",
-    "default": true,
-    "hint": "开启时只处理 LLM 生成的结果；关闭后所有纯文本结果（包括其他插件输出）都可能被转换。"
-  },
-  "auto_tts_keep_text": {
-    "description": "自动语音保留文字",
-    "type": "bool",
-    "default": false,
-    "hint": "开启后，自动语音会同时保留原文字消息；关闭时只发送语音。"
-  },
   "session_settings_admin_only": {
     "description": "群聊仅管理员可改会话设置",
     "type": "bool",
     "default": true,
-    "hint": "控制群聊中谁可以使用 /tts_voice use|reset 和 /tts_auto。私聊始终允许。"
+    "hint": "控制群聊中谁可以使用 /tts_voice use|reset。私聊始终允许。"
   },
   "command_admin_only": {
     "description": "仅管理员可使用 /tts",
