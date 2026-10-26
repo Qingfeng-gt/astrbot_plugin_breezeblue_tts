@@ -45,7 +45,7 @@
       "pcm",
       "mp3_44100_192"
     ],
-    "hint": "AstrBot 会把音频转换为各平台可发送的语音格式。QQ 推荐 mp3 或 wav。"
+    "hint": "非 NapCat 平台使用的音频格式。NapCat 的 silk/wav 模式会忽略此项，改用 Breeze 的 24kHz WAV。"
   },
   "napcat_audio_mode": {
     "description": "NapCat 语音发送格式",
